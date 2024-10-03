@@ -238,8 +238,11 @@ defmodule Owl.LiveScreen do
   end
 
   defp init_state(terminal_width, refresh_every, device) do
+    monitor = if is_pid(device), do: Process.monitor(device)
+
     %{
       device: device,
+      device_monitor: monitor,
       timer_ref: nil,
       notify_on_next_render: [],
       terminal_width: terminal_width,
@@ -353,6 +356,18 @@ defmodule Owl.LiveScreen do
 
   def handle_info({:io_request, from, reply_as, req}, state) do
     state = io_request(from, reply_as, req, state)
+    {:noreply, state}
+  end
+
+  # monitor created in `init_state/3`
+  # this allows group_leader processes to safely crash without leaving a dangling PID in LiveScreen state
+  def handle_info(
+        {:DOWN, monitor, :process, device, _reason},
+        %{device: device, device_monitor: monitor} = state
+      ) do
+    state = render(state)
+
+    state = init_state(state.terminal_width, state.refresh_every, :stdio)
     {:noreply, state}
   end
 
